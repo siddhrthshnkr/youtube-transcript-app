@@ -55,11 +55,13 @@ const categorizeError = (errorMessage) => {
     if (lowerError.includes('rate limit') || lowerError.includes('too many requests')) {
         return {
             type: 'rate_limit',
-            title: 'Rate Limit Exceeded',
-            message: 'Too many requests. Please wait a moment before trying again.',
+            title: 'YouTube Rate Limit Reached',
+            message: 'YouTube has temporarily rate-limited requests. This is normal and will reset shortly.',
             suggestions: [
-                'Wait 30-60 seconds before trying again',
-                'Avoid making multiple rapid requests'
+                'Wait 60-90 seconds and try again',
+                'If you just tried this video, check your browser cache - it may already be saved',
+                'Once successful, the transcript will be cached for 10 minutes for instant access',
+                'Try a different video while waiting'
             ]
         };
     }
@@ -90,12 +92,52 @@ const categorizeError = (errorMessage) => {
     };
 };
 
+// Cache duration in milliseconds (10 minutes)
+const CACHE_DURATION = 10 * 60 * 1000;
+
+// Helper to get from localStorage cache
+const getCachedTranscript = (videoId) => {
+    try {
+        const cached = localStorage.getItem(`transcript_${videoId}`);
+        if (!cached) return null;
+
+        const { data, timestamp } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+
+        // Return cached data if less than CACHE_DURATION old
+        if (age < CACHE_DURATION) {
+            return data;
+        }
+
+        // Remove expired cache
+        localStorage.removeItem(`transcript_${videoId}`);
+        return null;
+    } catch (e) {
+        console.error('Cache read error:', e);
+        return null;
+    }
+};
+
+// Helper to save to localStorage cache
+const cacheTranscript = (videoId, data) => {
+    try {
+        const cacheEntry = {
+            data: data,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(`transcript_${videoId}`, JSON.stringify(cacheEntry));
+    } catch (e) {
+        console.error('Cache write error:', e);
+    }
+};
+
 const App = () => {
     const [url, setUrl] = useState('');
     const [transcript, setTranscript] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [copyStatus, setCopyStatus] = useState('');
+    const [fromCache, setFromCache] = useState(false);
 
     // Formats seconds into MM:SS.ss format for display
     const formatTime = (seconds) => {
@@ -155,6 +197,7 @@ const App = () => {
         setError(null);
         setTranscript(null);
         setCopyStatus('');
+        setFromCache(false);
 
         // Validate URL before making request
         const trimmedUrl = url.trim();
@@ -167,6 +210,15 @@ const App = () => {
 
         if (!videoId) {
             setError(categorizeError('Invalid YouTube URL. Please check the link and try again.'));
+            return;
+        }
+
+        // Check cache first to avoid rate limiting
+        const cachedData = getCachedTranscript(videoId);
+        if (cachedData) {
+            console.log('Using cached transcript for video:', videoId);
+            setTranscript(cachedData);
+            setFromCache(true);
             return;
         }
 
@@ -217,6 +269,10 @@ const App = () => {
                 throw new Error('No transcript data returned. The video may not have captions available.');
             }
 
+            // Cache the successful result
+            cacheTranscript(videoId, data);
+            console.log('Transcript cached for video:', videoId);
+
             setTranscript(data);
 
         } catch (err) {
@@ -258,6 +314,11 @@ const App = () => {
                             <CheckCircle2 className="w-5 h-5 text-green-600 mr-2" />
                             <span className="font-bold text-green-700 text-lg">{transcript.length}</span>
                             <span className="ml-1">segments extracted successfully!</span>
+                            {fromCache && (
+                                <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full border border-blue-300">
+                                    Cached ⚡
+                                </span>
+                            )}
                         </p>
                         <div className="flex items-center space-x-3">
                             {copyStatus && (
