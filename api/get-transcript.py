@@ -68,7 +68,6 @@ class handler(BaseHTTPRequestHandler):
             ytt_api = YouTubeTranscriptApi()
 
             # Add some delay to avoid triggering rate limits
-            import time
             time.sleep(0.5)  # 500ms delay
 
             # Strategy: Try multiple language options to maximize success
