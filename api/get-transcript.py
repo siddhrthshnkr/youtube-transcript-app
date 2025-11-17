@@ -8,21 +8,9 @@ from urllib.parse import urlparse, parse_qs
 # Import the necessary library (must be listed in requirements.txt)
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
-    from youtube_transcript_api._errors import (
-        TranscriptsDisabled,
-        NoTranscriptFound,
-        VideoUnavailable,
-        TooManyRequests,
-        YouTubeRequestFailed
-    )
 except ImportError as e:
     print(f"Import error: {e}")
     YouTubeTranscriptApi = None
-    TranscriptsDisabled = None
-    NoTranscriptFound = None
-    VideoUnavailable = None
-    TooManyRequests = None
-    YouTubeRequestFailed = None
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -55,74 +43,86 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            # Extract the transcript from YouTube
-            # First, list all available transcripts to find what's available
-            transcript_list_obj = YouTubeTranscriptApi.list_transcripts(video_id)
+            # Extract the transcript from YouTube using the NEW API
+            # Initialize the API client
+            ytt_api = YouTubeTranscriptApi()
 
-            # Try to find a transcript in this order:
-            # 1. Try to get English transcript (manual or auto-generated)
-            # 2. Try to get any manually created transcript
-            # 3. Try to get any auto-generated transcript
-            # 4. Get the first available transcript
+            # Strategy: Try multiple language options to maximize success
+            # 1. Try English first (most common)
+            # 2. If that fails, list all available transcripts and get the first one
 
-            transcript = None
+            transcript_data = None
 
             try:
-                # Try English first (most common)
-                transcript = transcript_list_obj.find_transcript(['en'])
-            except:
+                # Try to fetch English transcript (manual or auto-generated)
+                # The fetch() method will automatically handle both types
+                transcript_data = ytt_api.fetch(video_id, languages=['en'])
+            except Exception as en_error:
+                # If English fails, try to get any available transcript
                 try:
-                    # Try to get any manually created transcript
-                    transcript = transcript_list_obj.find_manually_created_transcript()
-                except:
+                    # List all available transcripts
+                    transcript_list = ytt_api.list(video_id)
+
+                    # Try to find any transcript (manual or generated)
+                    found_transcript = None
+
+                    # First, try to find ANY English variant
                     try:
-                        # Try to get any auto-generated transcript
-                        transcript = transcript_list_obj.find_generated_transcript(['en', 'en-US', 'en-GB'])
+                        found_transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB', 'en-CA', 'en-AU'])
                     except:
-                        # Get the first available transcript in any language
-                        for t in transcript_list_obj:
-                            transcript = t
-                            break
+                        # Try to get manually created transcript in any language
+                        try:
+                            found_transcript = transcript_list.find_manually_created_transcript()
+                        except:
+                            # Try to get auto-generated transcript in any language
+                            try:
+                                found_transcript = transcript_list.find_generated_transcript(['en', 'en-US', 'en-GB'])
+                            except:
+                                # Get the first available transcript
+                                for trans in transcript_list:
+                                    found_transcript = trans
+                                    break
 
-            if transcript is None:
-                raise NoTranscriptFound(video_id, [], None)
+                    if found_transcript:
+                        # Fetch the actual transcript data
+                        transcript_data = found_transcript.fetch()
+                    else:
+                        raise Exception("No transcript found for this video")
 
-            # Fetch the actual transcript data
-            transcript_list = transcript.fetch()
+                except Exception as list_error:
+                    # Re-raise the original error if everything fails
+                    raise en_error
 
-            # Return the list of transcript segments as JSON
-            response_data = transcript_list
+            if not transcript_data:
+                raise Exception("No transcript data available for this video")
+
+            # Convert the FetchedTranscript object to a list of dictionaries
+            # The transcript_data should already be iterable based on the API docs
+            response_data = list(transcript_data)
 
         except Exception as e:
-            # Handle various error cases with specific exceptions
+            # Handle various error cases
             error_message = str(e)
             error_type = type(e).__name__
+            original_error = str(e)
 
-            # Check for specific exception types if imports succeeded
-            if TranscriptsDisabled and isinstance(e, TranscriptsDisabled):
+            # Provide user-friendly error messages
+            error_lower = error_message.lower()
+
+            if 'transcript' in error_lower and 'disabled' in error_lower:
                 error_message = 'Transcript is disabled for this video. The video owner needs to enable captions.'
-            elif NoTranscriptFound and isinstance(e, NoTranscriptFound):
-                error_message = 'No transcript found for this video. Captions may not be available in any language.'
-            elif VideoUnavailable and isinstance(e, VideoUnavailable):
-                error_message = 'Video is unavailable. It may be private, deleted, or region-restricted.'
-            elif TooManyRequests and isinstance(e, TooManyRequests):
+            elif 'no transcript' in error_lower or 'could not retrieve' in error_lower:
+                error_message = 'No transcript available for this video. Please ensure the video has captions/subtitles enabled.'
+            elif 'unavailable' in error_lower or 'not found' in error_lower or 'invalid' in error_lower:
+                error_message = 'Video not found or unavailable. Please check the URL and try again.'
+            elif 'too many' in error_lower or 'rate limit' in error_lower:
                 error_message = 'Too many requests. Please try again in a few moments.'
-            elif YouTubeRequestFailed and isinstance(e, YouTubeRequestFailed):
-                error_message = 'Failed to connect to YouTube. Please try again later.'
-            else:
-                # Fallback to string matching for better error messages
-                error_lower = error_message.lower()
-                if 'transcript' in error_lower and 'disabled' in error_lower:
-                    error_message = 'Transcript is disabled for this video. The video owner needs to enable captions.'
-                elif 'could not retrieve' in error_lower or 'no transcripts' in error_lower:
-                    error_message = 'No transcript available for this video. Please ensure the video has captions/subtitles enabled.'
-                elif 'unavailable' in error_lower or 'not found' in error_lower:
-                    error_message = 'Video not found or unavailable. Please check the URL and try again.'
 
             response_data = {
                 'error': error_message,
-                'details': str(e),
-                'error_type': error_type
+                'details': original_error,
+                'error_type': error_type,
+                'video_id': video_id
             }
 
         self.wfile.write(json.dumps(response_data).encode('utf-8'))

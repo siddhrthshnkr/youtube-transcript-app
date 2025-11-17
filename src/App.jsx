@@ -197,7 +197,20 @@ const App = () => {
             const data = await response.json();
 
             if (data.error) {
-                throw new Error(data.error);
+                // Log full error details for debugging
+                console.error('API Error Details:', {
+                    error: data.error,
+                    details: data.details,
+                    error_type: data.error_type,
+                    video_id: data.video_id
+                });
+
+                // Include detailed error info in the error message
+                let fullError = data.error;
+                if (data.details && data.details !== data.error) {
+                    fullError += ` (Details: ${data.details})`;
+                }
+                throw new Error(fullError);
             }
 
             if (!data || data.length === 0) {
@@ -208,6 +221,7 @@ const App = () => {
 
         } catch (err) {
             console.error('Transcript extraction error:', err);
+            console.error('Full error object:', err);
             setError(categorizeError(err.message));
         } finally {
             setLoading(false);

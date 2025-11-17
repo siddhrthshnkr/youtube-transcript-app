@@ -1,0 +1,178 @@
+YouTube Transcript API - Latest Documentation
+Library: /jdepoix/youtube-transcript-api
+Status: High-quality, actively maintained library with 24+ code examples
+
+Installation
+pip install youtube-transcript-api
+Basic Usage
+Simple Transcript Fetch
+from youtube_transcript_api import YouTubeTranscriptApi
+
+ytt_api = YouTubeTranscriptApi()
+video_id = "YOUR_VIDEO_ID"  # Not the full URL, just the ID
+
+transcript_list = ytt_api.fetch(video_id)
+With Language Support
+# Fetch with language priority (German preferred, fallback to English)
+transcript = ytt_api.fetch(video_id, languages=['de', 'en'])
+
+# Fetch only German
+transcript = ytt_api.fetch(video_id, languages=['de'])
+Data Structure
+The returned transcript is a FetchedTranscript object containing:
+
+[
+    {
+        'text': 'Hey there',
+        'start': 0.0,
+        'duration': 1.54
+    },
+    {
+        'text': 'how are you',
+        'start': 1.54,
+        'duration': 4.16
+    },
+    # ...
+]
+Access via iteration or indexing:
+
+for snippet in transcript:
+    print(snippet['text'])
+
+# Or index directly
+first_snippet = transcript[0]
+Advanced Features
+List Available Transcripts
+transcript_list = ytt_api.list(video_id)
+
+for transcript in transcript_list:
+    print(transcript.language)
+    print(transcript.language_code)
+    print(transcript.is_generated)
+    print(transcript.is_translatable)
+Find Specific Transcripts
+# Find any matching transcript (manual or generated)
+transcript = transcript_list.find_transcript(['de', 'en'])
+
+# Find only manually created
+transcript = transcript_list.find_manually_created_transcript(['de', 'en'])
+
+# Find only auto-generated
+transcript = transcript_list.find_generated_transcript(['de', 'en'])
+
+# Fetch the transcript
+fetched = transcript.fetch()
+Translate Transcripts
+# Translate to German
+german_transcript = transcript.translate('de').fetch()
+Preserve Formatting
+# Keep HTML formatting tags like <i>, <b>
+transcript = ytt_api.fetch(video_id, preserve_formatting=True)
+Output Formatters
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.formatters import (
+    JSONFormatter,
+    TextFormatter,
+    WebVTTFormatter,
+    SRTFormatter
+)
+
+transcript = ytt_api.fetch(video_id)
+
+# JSON format
+json_formatted = JSONFormatter().format_transcript(transcript, indent=2)
+
+# Text format
+text_formatted = TextFormatter().format_transcript(transcript)
+
+# WebVTT format (for video players)
+webvtt_formatted = WebVTTFormatter().format_transcript(transcript)
+
+# SRT format (subtitle files)
+srt_formatted = SRTFormatter().format_transcript(transcript)
+Write to File
+with open('transcript.json', 'w', encoding='utf-8') as f:
+    f.write(JSONFormatter().format_transcript(transcript))
+Custom Formatter
+from youtube_transcript_api.formatters import Formatter
+from typing import List
+
+class MyCustomFormatter(Formatter):
+    def format_transcript(self, transcript: List[dict], **kwargs) -> str:
+        # Custom processing
+        return 'formatted output'
+    
+    def format_transcripts(self, transcripts: List[List[dict]], **kwargs) -> str:
+        # Format multiple transcripts
+        return 'formatted output'
+Advanced Configuration
+Custom HTTP Session
+from requests import Session
+
+http_client = Session()
+http_client.headers.update({"Accept-Encoding": "gzip, deflate"})
+http_client.verify = "/path/to/certfile"
+
+ytt_api = YouTubeTranscriptApi(http_client=http_client)
+transcript = ytt_api.fetch(video_id)
+Proxy Support
+from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
+
+# Generic proxy
+ytt_api = YouTubeTranscriptApi(
+    proxy_config=GenericProxyConfig(
+        http_url="http://user:pass@proxy.org:port",
+        https_url="https://user:pass@proxy.org:port",
+    )
+)
+
+# Or Webshare proxies
+ytt_api = YouTubeTranscriptApi(
+    proxy_config=WebshareProxyConfig(
+        proxy_username="your_username",
+        proxy_password="your_password",
+    )
+)
+CLI Commands
+# Basic fetch
+youtube_transcript_api VIDEO_ID
+
+# Multiple videos
+youtube_transcript_api VIDEO_ID1 VIDEO_ID2
+
+# List available transcripts
+youtube_transcript_api --list-transcripts VIDEO_ID
+
+# Specific languages with JSON output
+youtube_transcript_api VIDEO_ID --languages de en --format json > transcripts.json
+
+# Translate to German
+youtube_transcript_api VIDEO_ID --languages en --translate de
+
+# Exclude auto-generated
+youtube_transcript_api VIDEO_ID --languages de en --exclude-generated
+
+# With authentication
+youtube_transcript_api VIDEO_ID --cookies /path/to/cookies.txt
+
+# With proxy
+youtube_transcript_api VIDEO_ID --http-proxy http://user:pass@domain:port
+Key Parameters
+languages: List of language codes in priority order (default: ['en'])
+continue_after_error: Continue if an error occurs for a language
+preserve_formatting: Keep HTML formatting tags
+http_client: Custom requests.Session object
+proxy_config: Proxy configuration object
+Error Handling
+The API will raise exceptions if:
+
+Video ID is invalid
+No transcripts available in requested languages
+Network errors occur
+Use try/except blocks:
+
+try:
+    transcript = ytt_api.fetch(video_id, languages=['de', 'en'])
+except Exception as e:
+    print(f"Error: {e}")
+This library is production-ready, actively maintained, and widely used for YouTube transcript extraction with comprehensive language support, multiple output formats, and robust error handling.
