@@ -4,9 +4,9 @@ import { Loader2, Zap, AlertTriangle, Copy, CheckCircle2 } from 'lucide-react';
 // Helper function to extract the Video ID from various YouTube URL formats
 const extractVideoId = (url) => {
     // Regex that covers watch?v=, youtu.be/, embed/, and shorts/ links
-    const regex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/)|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/|youtube-nocookie\.com\/(?:embed\/)?)?([a-zA-Z0-9_-]{11})/;
+    const regex = /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([a-zA-Z0-9_-]{11})|[?&]v=([a-zA-Z0-9_-]{11})/;
     const match = url.match(regex);
-    return (match && match[1] && match[1].length === 11) ? match[1] : null;
+    return match ? (match[1] || match[2]) : null;
 };
 
 // Helper function to categorize errors for better user feedback
