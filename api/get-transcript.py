@@ -2,6 +2,7 @@
 # Extracts YouTube transcripts using youtube_transcript_api
 
 import json
+import time
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -11,6 +12,11 @@ try:
 except ImportError as e:
     print(f"Import error: {e}")
     YouTubeTranscriptApi = None
+
+# Simple in-memory cache to reduce API calls
+# Format: {video_id: {'data': transcript, 'timestamp': time}}
+CACHE = {}
+CACHE_DURATION = 300  # 5 minutes in seconds
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -41,6 +47,17 @@ class handler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(response_data).encode('utf-8'))
             return
+
+        # Check cache first to reduce API calls and avoid rate limiting
+        current_time = time.time()
+        if video_id in CACHE:
+            cached_entry = CACHE[video_id]
+            # Check if cache is still valid
+            if current_time - cached_entry['timestamp'] < CACHE_DURATION:
+                # Return cached data
+                response_data = cached_entry['data']
+                self.wfile.write(json.dumps(response_data).encode('utf-8'))
+                return
 
         try:
             # Extract the transcript from YouTube using the NEW API
@@ -100,6 +117,12 @@ class handler(BaseHTTPRequestHandler):
             # The transcript_data should already be iterable based on the API docs
             response_data = list(transcript_data)
 
+            # Cache the successful response
+            CACHE[video_id] = {
+                'data': response_data,
+                'timestamp': current_time
+            }
+
         except Exception as e:
             # Handle various error cases
             error_message = str(e)
@@ -115,8 +138,8 @@ class handler(BaseHTTPRequestHandler):
                 error_message = 'No transcript available for this video. Please ensure the video has captions/subtitles enabled.'
             elif 'unavailable' in error_lower or 'not found' in error_lower or 'invalid' in error_lower:
                 error_message = 'Video not found or unavailable. Please check the URL and try again.'
-            elif 'too many' in error_lower or 'rate limit' in error_lower:
-                error_message = 'Too many requests. Please try again in a few moments.'
+            elif 'too many' in error_lower or 'rate limit' in error_lower or '429' in error_lower:
+                error_message = 'YouTube rate limit reached. Please wait 60-90 seconds before trying again. (Caching enabled to prevent this in the future)'
 
             response_data = {
                 'error': error_message,
